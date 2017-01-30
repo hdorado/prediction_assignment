@@ -1,0 +1,165 @@
+---
+title: "A machine learning model to identify how well a physical activity is doing"
+author: "Hugo Andres Dorado"
+date: "Saturday, January 28, 2017"
+output: html_document
+---
+
+##Backaground
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: <http://groupware.les.inf.puc-rio.br/har> (see the section on the Weight Lifting Exercise Dataset).
+
+##Data
+
+The data come from six young male participants aged between 20-28 years. 
+
+They perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: 
+
+- Class A: exactly according to the specification.
+
+- Class B:  Cthrowing the elbows to the front.
+
+- Class C: lifting the dumbbell only halfway 
+
+- Class D: lowering the dumbbell only halfway 
+
+- Class E:  throwing the hips to the front.
+
+##Methodology 
+
+The plan to create a predictive model consisted in proving three differents machine leaning algorithms (Random forest, Classification trees and gradient stochastic boosting),this to identify which of them have a better performance based in the Accuracy index. To start, exploratory analysis on database was done and variables with missing values were removed, then the models were built using cross validation and the machine learning algorithm, finally a variable importance measure for the best model was used, this to recognize a subset of inputs variable which are relevant to explain the output variable.
+
+
+##Prediction model process
+
+```{r eval=T, echo=FALSE}
+setwd("C:/Users/hadorado/Desktop/FINAL_PROGT/")
+```
+
+Some relevant packages, training and testing sets were load in R
+
+```{r eval=T, echo=T,warning=FALSE,message=FALSE}
+rm(list=ls())
+
+library(caret)
+library(ggplot2)
+library(randomForest)
+library(party)
+library(rpart)
+library(gbm)
+library(survival)
+library(plyr)
+library(splines)
+
+dirFol <- "."
+
+setwd(dirFol)
+
+train.pml <- read.csv("pml-training.csv",row.names=1)
+test.pml <- read.csv("pml-testing.csv",row.names=1)
+
+```
+
+The exploration analysis showed the presence of missing values in some variables, the summary wasn't shown in the document because there are many variables.
+
+```{r eval=FALSE}
+str(train.pml)
+summary(train.pml)
+```
+
+Only the variables without NA were kept in the analysis.
+
+```{r eval=T}
+train.pml[train.pml == "#DIV/0!" | train.pml == "" ] <- NA
+
+train.pml <- droplevels(train.pml)
+
+missCount <- apply(train.pml,2,function(x){ sum(is.na(x)) })
+
+train.pml.depur <- train.pml[,missCount==0]
+
+dim(train.pml.depur)
+
+
+train.pml.depur <- train.pml.depur[,-(1:6)]
+```
+
+###Cross validation
+
+Split the dataset into a 60% training and 40% testing dataset.
+
+```{r eval=T}
+set.seed(666)
+
+inTrain   <- createDataPartition(train.pml.depur$classe, p=0.60, list=F)
+trainData <- train.pml.depur[inTrain, ]
+testData  <- train.pml.depur[-inTrain, ]
+```
+
+```{r eval=T,echo=F}
+load("models.RData")
+```
+
+In the training process a cross validation split of 5 folds were used to estimate the error and optimize the parameters.
+
+```{r eval=FALSE}
+
+tr.model.rf <- train(classe~., method = "rf", data=trainData,trControl=trainControl(method="cv", 5))
+
+tr.model.rp <- train(classe~., method = "rpart", data=trainData,trControl=trainControl(method="cv", 5))
+
+tr.model.gb <- train(classe~., method = "gbm", data=trainData,trControl=trainControl(method="cv", 5))
+
+```
+###Expected out of sample error
+
+The expected out of sample error were computed as 1  - accuracy in the testing set, given that the idea is quantifying the generalization  error  rate with a dataset which haven't been used in the training process, then the 40% of the data that was separated for testing set were used to computed it. 
+
+```{r eval=T}
+cm.rf <- confusionMatrix(predict(tr.model.rf,testData),testData$classe)
+cm.rp <- confusionMatrix(predict(tr.model.rp,testData),testData$classe)
+cm.gb <- confusionMatrix(predict(tr.model.gb,testData),testData$classe)
+
+cm.rf$overall[1]
+cm.rp$overall[1]
+cm.gb$overall[1]
+
+1-cm.rf$overall[1]
+1-cm.rp$overall[1]
+1-cm.gb$overall[1]
+
+
+
+```
+According to the results, the best model was random forest, with a high precision of 99.5% and a out of sample error of 0.42%.
+
+###Confusion matrix
+
+```{r eval=T}
+cm.rf$table
+```
+The matrix shows that the most of observations are in the diagonal of the matrix.
+
+###Variable importance
+
+```{r, echo=FALSE}
+plot(varImp(tr.model.rf),top=15)
+```
+The variable importance of random forest  showed that: roll belt, pitch forearm and yaw belt as the most relevant variables to explain the output.
+
+
+```{r eval=T}
+
+test.set <- read.csv("pml-testing.csv")
+
+varsTrain <- names(trainData)
+
+test.set.depur <- test.set[,varsTrain[-53]]
+
+predict(tr.model.rf,test.set.depur)
+```
+###Conclusion
+
+we can use a random forest model to predict the manner in which people is doing  exercises with a good accuracy.
+
+
